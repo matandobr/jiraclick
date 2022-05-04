@@ -1,0 +1,2 @@
+pyclickup==0.1.4
+jira==3.1.1
