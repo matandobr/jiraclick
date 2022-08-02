@@ -1,5 +1,7 @@
 import os
 import sys
+
+import jira.exceptions
 from pyclickup import ClickUp
 from time import sleep
 from jira.client import JIRA
@@ -91,16 +93,24 @@ class JiraClick:
         status = get_key_by_value(JIRA_TO_CLICKUP_STATUS, clickup_task.status.status.upper()) or 'TO DO'
         clickup_priority = clickup_task.priority
         priority = get_key_by_value(JIRA_TO_CLICKUP_PRIORITY, int(clickup_priority['id'])) if clickup_priority else None
+        list_name = clickup_task.list['name'].replace(' ', '_')
+
         issue_dict = {
             'project': self.jira_project,
             'summary': summary,
             'description': description,
             'issuetype': {'name': 'Task'},
+            'labels': [list_name],
         }
         if clickup_priority:
             issue_dict['priority'] = {'name': priority}
         new_issue = self.jira_client.create_issue(fields=issue_dict)
-        self.jira_client.transition_issue(new_issue.id, status)  # Jira won't let you set status right away
+
+        try:
+            self.jira_client.transition_issue(new_issue.id, status)  # Jira won't let you set status right away
+        except jira.exceptions.JIRAError as je:
+            print(f'Error in status transition - {je}')
+
         return new_issue.key
 
     # Reuse the all already queried tasks + issues
