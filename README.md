@@ -41,4 +41,14 @@ CLICKUP_DEFAULT_LIST = 'Other' # Tasks imported from JIRA will be created here
 * Content/Description copy between the two projects
 
 ### TODO
+Features:
 * Support links and attachments
+
+Code:
+* Improve logging
+* Add tests
+
+
+### Changelog
+* 1.1 - Added due date & better time sync between the systems
+* 1.0 - Initial release

@@ -6,8 +6,10 @@ from pyclickup import ClickUp
 from time import sleep
 from jira.client import JIRA
 import json
-from datetime import datetime, timedelta
+from datetime import timedelta
 from conf import *
+
+JIRACLICK_VERSION = '1.1'
 
 
 def get_key_by_value(mapping: dict, key_value):
@@ -83,7 +85,14 @@ class JiraClick:
         content = f'Imported from JIRA - {jira_issue.key}\n\n {jira_issue.fields.description}'
         status = JIRA_TO_CLICKUP_STATUS.get(jira_issue.fields.status.name.upper()) or 'OPEN'
         priority = JIRA_TO_CLICKUP_PRIORITY.get(jira_issue.fields.priority.name) or DEFAULT_CLICKUP_PRIORITY
-        new_clickup_id = self.clickup_list.create_task(name=name, content=content, status=status, priority=priority)
+
+        # Optional fields, jira object does not support iteration or dict search...
+        try:
+            duedate = datetime.fromisoformat(jira_issue.fields.duedate)
+        except (AttributeError, TypeError) as e:
+            duedate = None
+
+        new_clickup_id = self.clickup_list.create_task(name=name, content=content, status=status, priority=priority, due_date=duedate)
         return new_clickup_id
 
     def create_jira_issue_from_clickup(self, clickup_task) -> str:
@@ -91,8 +100,12 @@ class JiraClick:
         description = clickup_task.description or ''
         description = f'Imported from ClickUp - {clickup_task.id}\n\n {description}'
         status = get_key_by_value(JIRA_TO_CLICKUP_STATUS, clickup_task.status.status.upper()) or 'TO DO'
+
+        # Optional fields
         clickup_priority = clickup_task.priority
         priority = get_key_by_value(JIRA_TO_CLICKUP_PRIORITY, int(clickup_priority['id'])) if clickup_priority else None
+        due_date = clickup_task.due_date or None
+
         list_name = clickup_task.list['name'].replace(' ', '_')
 
         issue_dict = {
@@ -104,6 +117,8 @@ class JiraClick:
         }
         if clickup_priority:
             issue_dict['priority'] = {'name': priority}
+        if due_date:
+            issue_dict['due_date'] = due_date
         new_issue = self.jira_client.create_issue(fields=issue_dict)
 
         try:
@@ -129,6 +144,7 @@ class JiraClick:
 
         # Starting with Jira issues
         for jira_issue in self.all_jira_issues:
+            break
             jira_issue_key = jira_issue.key  # RES-382
             existing_issue_in_db = self.search_db(jira_issue_key)
 
@@ -168,8 +184,7 @@ class JiraClick:
             existing_task_in_db = self.search_db(clickup_task_id, 'ClickUp')
             # If the task exist, only check for timestamp, and update jira for any changes
             if existing_task_in_db:
-                clickup_last_update = clickup_task.date_updated + timedelta(
-                    hours=2)  # Our clickup is on different timezone
+                clickup_last_update = clickup_task.date_updated + timedelta(hours=CLICKUP_TIME_DELTA)
                 db_last_update = datetime.fromisoformat(existing_task_in_db['last_update'])
                 if clickup_last_update > db_last_update:
                     existing_jira_issue = self.search_task_or_issue(existing_task_in_db['jira_key'])
@@ -210,6 +225,7 @@ def run_forever(minutes=10):
 
 
 if __name__ == '__main__':
+    print(f'[INFO] JiraClick version {JIRACLICK_VERSION}')
     # For single run - run without parameters, for endless run - run with number of minutes to delay between syncs
     if len(sys.argv) > 1:
         sleep_minutes = int(sys.argv[1])
